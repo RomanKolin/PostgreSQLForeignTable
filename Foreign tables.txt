@@ -1,0 +1,31 @@
+initdb -k -D /usr/local/pgsql/data2/
+pg_ctl -D /usr/local/pgsql/data2/ start
+CREATE USER romankolin WITH SUPERUSER;
+CREATE DATABASE romankolin;
+CREATE DATABASE Local;
+CREATE DATABASE Remote;
+CREATE EXTENSION file_fdw;
+CREATE SERVER localimport FOREIGN DATA WRAPPER file_fdw;
+CREATE FOREIGN TABLE localimport(x int, y int) SERVER localimport OPTIONS(filename '/home/romankolin/Downloads/LocalImport.csv', format 'csv');
+CREATE TABLE remote(x int DEFAULT NULL, y int DEFAULT NULL);
+INSERT INTO remote VALUES(1, 2),
+                                                     (3, 4),
+                                                     (5, 6),
+                                                     (7, 8),
+                                                     (9, 10);
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER remote FOREIGN DATA WRAPPER postgres_fdw OPTIONS(host '127.0.0.1', port '5433', dbname 'remote');
+CREATE USER MAPPING FOR "romankolin" SERVER remote OPTIONS(user 'romankolin', password '');
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER local FOREIGN DATA WRAPPER postgres_fdw OPTIONS(host '127.0.0.1', port '5432', dbname 'local');
+CREATE USER MAPPING FOR "romankolin" SERVER local OPTIONS(user 'romankolin', password '');
+CREATE FOREIGN TABLE localremote(x int, y int) SERVER remote OPTIONS(schema_name 'public', table_name 'remote');
+CREATE SCHEMA remote;
+CREATE TABLE remote.remote (x int);
+INSERT INTO remote.remote SELECT 10 + random() * 5 FROM generate_series(1,5);
+CREATE SCHEMA localremote;
+IMPORT FOREIGN SCHEMA remote LIMIT TO (remote) FROM SERVER remote INTO localremote;
+CREATE MATERIALIZED VIEW localremoteselect AS SELECT x, y FROM dblink('dbname=remote port=5433 host=127.0.0.1 user=romankolin password=', 'SELECT x, y FROM remote') AS localremoteselect(x int, y int);
+EXPLAIN ANALYZE SELECT * FROM localremoteselect;
+EXPLAIN ANALYZE SELECT * FROM mlocalremoteselect;
+EXPLAIN ANALYZE SELECT * FROM localremote;
